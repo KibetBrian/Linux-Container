@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 )
 
@@ -41,6 +44,7 @@ func InitProcess() {
 	log.Println("ProcessId: ", os.Getpid())
 	arguments := []string{"/proc/self/exe", "run"}
 
+
 	cmd := exec.Command(arguments[0], arguments[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.SysProcAttr = NameSpacesFlags(cmd)
@@ -53,10 +57,12 @@ func InitProcess() {
 
 func StartMainProcess() {
 	setHostName()
+	MountFileSystem()
+	CgroupsProcessId()
+	
 	arguments := []string{"/bin/bash"}
 	
 	cmd := exec.Command(arguments[0])
-	MountFileSystem()
 
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.SysProcAttr = NameSpacesFlags(cmd)
@@ -83,7 +89,8 @@ func NameSpacesFlags(cmd *exec.Cmd) *syscall.SysProcAttr {
 	return attributes
 }
 
-func MountFileSystem (){
+func MountFileSystem(){
+	//You need to create a copy of linux file system 
 	err := syscall.Chroot("/home/root")
 	if err != nil {
 		panic(err)
@@ -98,6 +105,37 @@ func MountFileSystem (){
 	if err != nil {
 		panic(err)
 	}
+}
+
+func CgroupsProcessId(){
+
+	cgroupDir := "/sys/fs/cgroup/"
+	dirName := "p_ids"
+	path := filepath.Join(cgroupDir, dirName)
+
+	if _, err := os.Stat(path); os.IsNotExist(err){
+		err := os.Mkdir(path, 0700)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	pidMax := filepath.Join(path,"pid.max")
+	err := ioutil.WriteFile(pidMax,[]byte("20"), 0700)
+	if err != nil {
+		panic(err)
+	}
+
+	notifyOnRelease := filepath.Join(path, "notify_on_release")
+	err = ioutil.WriteFile(notifyOnRelease, []byte("1"),0700)
+	if err != nil{
+		panic(err)
+	}
+
+	processId := os.Getpid()
+	processIdString := fmt.Sprint(processId)
+	cgroupProcs := filepath.Join(path, "cgroup.procs")
+	ioutil.WriteFile(cgroupProcs,[]byte(processIdString), 0700)
 }
 
 func setHostName() {
