@@ -43,7 +43,7 @@ func InitProcess() {
 
 	cmd := exec.Command(arguments[0], arguments[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.SysProcAttr = Flags(cmd)
+	cmd.SysProcAttr = NameSpacesFlags(cmd)
 
 	err := cmd.Run()
 	if err != nil {
@@ -54,23 +54,50 @@ func InitProcess() {
 func StartMainProcess() {
 	setHostName()
 	arguments := []string{"/bin/bash"}
+	
 	cmd := exec.Command(arguments[0])
+	MountFileSystem()
+
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.SysProcAttr = Flags(cmd)
+	cmd.SysProcAttr = NameSpacesFlags(cmd)
 
 	err := cmd.Run()
 	if err != nil {
 		log.Fatalf("Error: %v \n", err)
 		os.Exit(1)
 	}
+	err = syscall.Unmount("/proc",0)
+	if err != nil {
+		panic(err)
+	}
 	log.Printf("Exited the container with process id: %v \n", os.Getpid())
 }
 
-func Flags(cmd *exec.Cmd) *syscall.SysProcAttr {
+func NameSpacesFlags(cmd *exec.Cmd) *syscall.SysProcAttr {
 	attributes := &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS,
+		Cloneflags: syscall.CLONE_NEWPID |
+		 			syscall.CLONE_NEWUTS|
+					syscall.CLONE_NEWIPC|
+		 			syscall.CLONE_NEWNS,
 	}
 	return attributes
+}
+
+func MountFileSystem (){
+	err := syscall.Chroot("/home/root")
+	if err != nil {
+		panic(err)
+	}
+
+	err = syscall.Chdir("/")	
+	if err != nil {
+		panic(err)
+	}
+	
+	err = syscall.Mount("proc", "proc", "proc", 0, "")
+	if err != nil {
+		panic(err)
+	}
 }
 
 func setHostName() {
